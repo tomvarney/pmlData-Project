@@ -1,0 +1,78 @@
+---
+title: "pmlData Writeup"
+author: "Tom Varney"
+date: "Sunday, February 22, 2015"
+output: html_document
+---
+
+This is my writeup for the PML Data Project for Practical Machine Learning.
+
+I downloaded the data and loaded it into RStudio, splitting it into a training dataset (75%) and a test dataset (25%).  I did some exploratory analysis on the training data.
+
+First, I noticed that there were several columns that only appeared when the "new_window" variable was "yes".  This appeared to be sommary statistics on the individual rows above it.  However these variables were not in th etest data that was provided for us to predict on, so I did not want to build my model on this data.  I did considered that possibly this new_window=yes data could provide some information about the distributions of the measurements, but I decided to delete those rows and not sue them at all.
+
+I also then removed all of the columns that were NA or blank.  (Most of these only had data when new_window was "yes", and those rows were no longer present.)  I also did the same pre-processing operations to my testing data.
+
+Next I looked at some of the variables using qplot.  
+
+
+```{r, echo=FALSE}
+library(caret)
+pmlData <- read.csv("~/R/rdata/PML_hopkins/pml-training.csv")
+#remove the new_window=YES rows -- decided not to use them as they do not appear in teh submittal test set
+pmlData <- pmlData[pmlData$new_window=="no",]
+#pre-process data to remove cols that are NA and Blank 
+pmlData[pmlData==""] <- NA
+pmlData <- pmlData[,colSums(is.na(pmlData))==0]
+#create tranining and testing datasets
+trainIndex <- createDataPartition(pmlData[,"classe"], p=.6, list=FALSE)
+training = pmlData[trainIndex,]
+qplot(roll_belt, yaw_belt, colour=user_name, pch=classe, data=training)
+```
+One thing that was clear quickly was that the user_names provided lots of information.  It did seem that we were allowed to use this variable in our model, and the user_names were included in the official test data, but still, I decided to try to do my model without using the user_name.
+
+Next I looked at some of the variables using a boxplot and qplot.  the roll_belt column -- which happened to e the first variable anyway -- seemed to provide significant information.  
+
+This is the box plot of roll_belt against the classe output:
+
+```{r, echo=FALSE}
+boxplot(roll_belt ~ classe, data = training, xlab = "classe", ylab = "roll_belt")
+```
+
+This is the qplot showing roll_belt and yaw_belt against the classe (color) and the user_name (point shape).
+
+```{r, echo=FALSE}
+qplot(roll_belt, yaw_belt, colour=classe, pch=user_name, data=training)
+
+```
+
+I did this with several other variables as well.
+
+I then started to try a few models.  I hypothesized that many of these variables were ging to be correlated, so I tried doing PCA pre-processing using a 90% level.  I got 9 variables to model with and tried modeling on these.  I tried CART (rpart) and got about a 6% error rate.
+
+Then I tried a randomForest with these PCS variables.  I did get a good fit (using 100 trees) -- with an OOB error on the training set of 1% -- pretty good!
+
+However, I also wanted to see if I could fit a model using the less-complex original variables, so I trained a randomForest on *all* of the variables, checked for the "importance" of the variables in the output, and then started removing some.  
+- I did models wiht the 15 most important variables from the first model.  
+- Then I took the 10 most important variables from that fit and did a new model with them.  
+- Finally I used the 7 most important variables from that model.
+
+The error rate did creep up to about 2-3%for tha tfinal 7-parameter model, however I felt the simplicity of it was worth it.
+
+So that was my final model -- a randomForest of 100 trees fitted on 7 of the variables:
+- roll_belt
+- yaw_belt
+- magnet_dumbbell_z
+- pitch_belt
+- pitch_forearm
+- magnet_dumbbell_y
+- roll_forearm
+
+I then performed a cross validation on this model using k-folds with k=5. I created a loop and trainined the model 5 times within the loop an dthen validated the model each time on  the left-out fold.  I recorded the accuracy/error for each loop iteration, and then took the mean of these as my expected out of sample error rate.
+
+I thin ran the model one time against my full testing set that I had held out at the begining and compared the error rates -- they were similar.  When I ran this entire script multiple times (as I was preparing it to publish) sometimes the predicted error rate was a little higher than the testing actual error rate, and sometimes the reverse.  But they were always close.
+
+I finally ran the model against the 20 test cases and submitted those - all were correct.
+
+
+
